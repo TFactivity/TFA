@@ -5,4 +5,4 @@
 + NFκB data
 + p53 data
 + Circadian clock data
-+ Jurkat data
++ Jurkat cell data
