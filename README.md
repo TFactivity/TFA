@@ -9,6 +9,6 @@
 #### 3.2 p53 data
 + Calculate p53 TFA dynamics
 #### 3.3 Circadian clock data
-+ Calculate TFA dynamics to extract circadian rhythm
++ Use TFA dynamics to extract circadian rhythm
 #### 3.4 Jurkat cell data
 + Use TFA dynamics to identify transcriptional modules during activation of Jurkat T cells
