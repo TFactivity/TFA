@@ -1,4 +1,3 @@
-rm(list = ls())
 
 library(Seurat)
 require(ggplot2)
@@ -66,6 +65,7 @@ for(col_i in colnames(mouse_dorothea_logic_matrix)){
 }
 mouse_dorothea_logic_matrix_ensembl=mouse_dorothea_logic_matrix_ensembl[,-1]
 
+
 #import intron/exon CPM data and compute TFA
 out_file_dir="../raw data/tpmcalculator_out_file/"
 out_file_name_vector=list.files(out_file_dir)
@@ -110,13 +110,17 @@ names_out_file_data_new=sub("\\).*$","",sub("^.*\\(","",names_out_file_data_new)
 names_out_file_data_new=paste("X",names_out_file_data_new,sep="")
 
 names(out_file_data)=names_out_file_data_new
-saveRDS(out_file_data,file=paste(result_dir,"out_file_data",".rds",sep = ""))
-# out_file_data=readRDS(paste(result_dir,"out_file_data.rds",sep=""))
+#saveRDS(out_file_data,file=paste(result_dir,"out_file_data",".rds",sep = ""))
+out_file_data=readRDS(paste(result_dir,"out_file_data.rds",sep=""))
 
 #subset
 time_point_vector=c(75,150,300)
 max_movie_time_point_vector=c(75,150,300)/5+1
 TF_chosen=c("Rela")
+# number of targets
+rowSums(mouse_dorothea_logic_matrix)["Rela"]
+TF_targets = colnames(mouse_dorothea_logic_matrix)[which(mouse_dorothea_logic_matrix["Rela",]==1)]
+#overlap with RNA seq data
 
 correlation_matrix=matrix(,length(time_point_vector),3,
                           dimnames = list(paste("time",time_point_vector,sep="_"),c("IntronCPM_vs_movie","ExonCPM_vs_movie","cellnum")))
@@ -226,7 +230,7 @@ for(i in 1:length(out_file_data)){
 rownames(TFA_cells) = names(out_file_data)
 TFE_cells = NULL
 # load TF expression data
-if(T){
+if(F){
   out_file_dir="../raw data/tpmcalculator_out_file/"
   out_file_name_vector=list.files(out_file_dir)
   out_file_data=list()
@@ -257,11 +261,12 @@ rownames(df.TFA) = rownames(TFA_cells)
 cor(na.omit(df.TFA))
 nrow(na.omit(df.TFA))
 nrow(df.TFA)
-hist(log10(df.TFA$TFE))
+# calculate total TFA
+df.TFA$TFA.to = df.TFA$TFA.in+df.TFA$TFA.ex
 # metadata
 tp = c(0,75,150,300)
 df.all = cbind(log2(df.TFA+1),RNA_cell_id$Time.point[na.omit(match(rownames(df.TFA),rownames(RNA_cell_id)))])
-colnames(df.all)[4] = "time"
+colnames(df.all)[5] = "time"
 df.all$time = as.numeric(as.character(df.all$time))
 df.all$time = factor(df.all$time,levels = c(0,75,150,300))
 table(df.all$time)
@@ -274,12 +279,6 @@ p2 = ggplot(df.all,aes(x = time,y = TFA.in))+geom_violin(aes(fill = time)) + yli
 p3 = ggplot(df.all,aes(x = time,y = TFA.ex))+geom_violin(aes(fill = time)) + ylim(0, 10)
 library("easyGgplot2")
 ggplot2.multiplot(p1,p2,p3,cols = 3)
-# correlation
-cor(na.omit(df.all[,1:3]))
-cor(na.omit(df.all[which(df.all$time==0),1:3]))
-cor(na.omit(df.all[which(df.all$time==75),1:3]))
-cor(na.omit(df.all[which(df.all$time==150),1:3]))
-cor(na.omit(df.all[which(df.all$time==300),1:3]))
 
 # Rela activity data
 time_point_vector=c(75,150,300)
@@ -359,10 +358,9 @@ for(i in 1:nrow(TF.dyn)){
   tmp = tmp[length(tmp)]
   final_activity_all = c(final_activity_all,tmp)
 }
-df.all[,5] = final_activity_all[match(rownames(df.all),rownames(TF.dyn))]
-colnames(df.all)[5] = "Rela_activity"
+df.all[,6] = final_activity_all[match(rownames(df.all),rownames(TF.dyn))]
+colnames(df.all)[6] = "Rela_activity"
 
-boxplot(df.all$Rela_activity[which(df.all$time==150)])
 
 # plot
 library(ggplot2)
@@ -398,11 +396,11 @@ for(i in 1:4){
   time_set = c(0,75,150,300)
   time = time_set[i]
   id = which(df.all$time==time)
-  tmp = c(mean(df.all$TFA.in[id]),mean(df.all$TFA.ex[id]),mean(df.all$TFE[id],na.rm = T),
-          sd(df.all$TFA.in[id]),sd(df.all$TFA.ex[id]),sd(df.all$TFE[id],na.rm = T))
+  tmp = c(mean(df.all$TFA.in[id]),mean(df.all$TFA.ex[id]),mean(df.all$TFE[id],na.rm = T),mean(df.all$TFA.to[id],na.rm = T),
+          sd(df.all$TFA.in[id]),sd(df.all$TFA.ex[id]),sd(df.all$TFE[id],na.rm = T),sd(df.all$TFA.to[id],na.rm = T))
   df.all.plot = rbind(df.all.plot,tmp)
 }
-colnames(df.all.plot) = c("intron.m","exon.m","exp.m","intron.sd","exon.sd","exp.sd")
+colnames(df.all.plot) = c("intron.m","exon.m","exp.m","total.m","intron.sd","exon.sd","exp.sd","total.sd")
 df.all.plot = as.data.frame(df.all.plot)
 df.all.plot$time = time_set
 # plot
@@ -420,3 +418,357 @@ library(cowplot)
 pdf(paste(result_dir,"NFKB TFA dynamics",".pdf",sep = ""),height=9,width=9)
 plot_grid(p1,p2,p3,p4,ncol = 1,align = "v")
 dev.off()
+
+colnames(df.rela.plot.sub) = c("time","nuclear.mean","nuclear.sd")
+df.all.plot.ex = cbind(df.rela.plot.sub[,1:3],df.all.plot[,c(1,5,2,6,3,7,4,8)])
+write.csv(df.all.plot.ex,file = paste(result_dir,"NFKB TFA dynamics",".csv",sep = ""),quote = F,row.names = F)
+
+# compare intron, exon with intron+exon
+if(F){
+  # show intron TFA, exon TFA, total TFA in one cell
+  df.all = log2(df.TFA+1)
+  pdf(paste(result_dir,"intron+exon_CPM",".pdf",sep = ""),height=9,width=9)
+  barplot(c(TFA_cells[1,1],TFA_cells[1,2],TFA_cells[1,1]+TFA_cells[1,2]),main = "Compare 3 types of TFA: NFkB",
+          names.arg = c("intron_TFA","exon_TFA","total_TFA"), col = c("red","blue","green"),ylab = "CPM")
+  dev.off()
+  
+  TFA_cells$TFA_totalCPM = TFA_cells$TFA_IntronCPM+TFA_cells$TFA_ExonCPM
+  
+  
+  p5 = ggplot(df.all.plot,aes(x = time, y = total.m)) + geom_errorbar(aes(ymin = total.m - total.sd, ymax = total.m + total.sd),
+                                                                      width = 0.2, position = position_dodge(0.1),colour = "green")
+  p5 = p5 + geom_line(position = position_dodge(0.1),colour = "green")+labs(y = "Total TFA",x = NULL)
+  pdf(paste(result_dir,"intron+exon_dynamics",".pdf",sep = ""),height=9,width=9)
+  plot_grid(p1,p2,p3,p5,ncol = 1,align = "v")
+  
+  dev.off()
+  
+  
+}
+
+# show dynamics of individual genes
+if(F){
+  # load intronCPM and exonCPM data for rela targets
+  TF_targets = colnames(mouse_dorothea_logic_matrix_ensembl)[which(mouse_dorothea_logic_matrix_ensembl["Rela",]==1)]
+  if(F){ # ~5 min
+    # record intron/exon CPM data
+    out_file_dir="../raw data/tpmcalculator_out_file/"
+    out_file_name_vector=list.files(out_file_dir)
+    out_file_data=list()
+    
+    intronCPM_mat = exonCPM_mat = matrix(0,nrow = length(TF_targets),ncol = length(out_file_name_vector))
+    rownames(intronCPM_mat) = rownames(exonCPM_mat) = TF_targets
+    for(i in 1:length(out_file_name_vector)){
+      out_file_i = out_file_name_vector[i]
+      data_i=read.table(paste(out_file_dir,out_file_i,sep=""),fill = T,header=T)
+      data_i=na.omit(data_i)
+      rownames(data_i)=sub("\\..*$","",data_i$Gene_Id)
+      data_i$ExonCPM=1e6*(data_i$ExonReads)/sum(data_i$Reads)
+      data_i$IntronCPM=1e6*(data_i$IntronReads)/sum(data_i$Reads)
+      
+      over_genes = intersect(rownames(data_i),rownames(intronCPM_mat))
+      exonCPM_mat[over_genes,i] = data_i[over_genes,"ExonCPM"]
+      intronCPM_mat[over_genes,i] = data_i[over_genes,"IntronCPM"]
+      
+      
+      print(i/length(out_file_name_vector))
+    }
+    # change names
+    cell_sra_result=read.csv("../raw data/sra_result.csv")
+    cell_SraRunInfo=read.csv("../raw data/SraRunInfo.csv")
+    cell_metadata=merge(cell_sra_result,cell_SraRunInfo,all=F,by.x="Experiment.Accession",by.y="Experiment")
+    rownames(cell_metadata)=cell_metadata$Run
+    
+    names_out_file_data_new=sub("_genes.out","",out_file_name_vector)
+    names_out_file_data_new=cell_metadata[names_out_file_data_new,"Experiment.Title"]
+    names_out_file_data_new=sub("\\).*$","",sub("^.*\\(","",names_out_file_data_new))
+    names_out_file_data_new=paste("X",names_out_file_data_new,sep="")
+    
+    colnames(exonCPM_mat) = colnames(intronCPM_mat) = names_out_file_data_new
+    # save(exonCPM_mat,intronCPM_mat,file = paste(result_dir,"intron_exon_CPM.RData",sep = ""))
+    
+  }
+  load(paste(result_dir,"intron_exon_CPM.RData",sep = ""))
+  # remove zero expression genes
+  table(rowSums(exonCPM_mat)>0)
+  table(rowSums(intronCPM_mat)>0)
+  colnames(exonCPM_mat)
+  # mean expression
+  df.mean = data.frame(intron.m = apply(intronCPM_mat,1,mean),exon.m = apply(exonCPM_mat,1,mean))
+
+  # metadata
+  tp = c(0,75,150,300)
+  time_data = RNA_cell_id$Time.point[na.omit(match(colnames(exonCPM_mat),rownames(RNA_cell_id)))]
+  Rela_activity = final_activity_all[match(colnames(exonCPM_mat),rownames(TF.dyn))]
+  
+  dim(exonCPM_mat)
+  
+  # calculate correlation for each gene
+  cor.genes = data.frame()
+  for(gene_i in 1:nrow(exonCPM_mat)){
+    data.t = data.frame()
+    for(i in 1:4){
+      time_set = c(0,75,150,300)
+      time = time_set[i]
+      id = which(time_data==time)
+      tmp = c(mean(intronCPM_mat[gene_i,id]),mean(exonCPM_mat[gene_i,id]))
+      data.t = rbind(data.t,tmp)
+    }
+    colnames(data.t) = c("intron.m","exon.m")
+    # correlation with nuclear localization signal
+    rela.t = df.rela.plot.sub$mean
+    cor.in = cor(data.t$intron.m,rela.t)
+    cor.ex = cor(data.t$exon.m,rela.t)
+    
+    cor.genes = rbind(cor.genes,c(cor.in,cor.ex))
+  }
+  rownames(cor.genes) = rownames(exonCPM_mat)
+  colnames(cor.genes) = c("cor.in","cor.ex")
+  
+  # combine data
+  df.comb = cbind(cor.genes,df.mean)
+  # symbol names
+  sym_names = geneIDs$SYMBOL[match(rownames(df.comb),geneIDs$GENEID)]
+  df.comb$symbol = sym_names
+  df.comb$symbol_toupper = toupper(sym_names)
+  
+  # evaluate the effect of mRNA half-life
+  #import MCF7 half lives data
+  MCF7_half_life_data=read.table("../../simulation data/raw code/p53 target half-lives/GSE49831_MCF7_halflives.txt",header=T)
+  MCF7_half_life_data$MCF7_half_life_mean=apply(MCF7_half_life_data,1,mean)
+  over_targets =intersect(toupper(sym_names),rownames(MCF7_half_life_data))
+  mhl_sub = MCF7_half_life_data[over_targets,]$MCF7_half_life_mean
+  names(mhl_sub) = over_targets
+  
+  # highest mRNA half-life and loweset mRNA half-life
+  sort(mhl_sub)
+  df.comb = cbind(df.comb,mhl = mhl_sub[df.comb$symbol_toupper])
+  
+  
+  # expression distribution
+  hist(log2(df.comb$intron.m+1))
+  hist(log2(df.comb$exon.m+1))
+  
+  # select high expression genes
+  sub.genes = which(df.comb$intron.m>1&df.comb$exon.m>1)
+  df.sub = df.comb[sub.genes,]
+  pdf(paste(result_dir,"indiv_correlation_nuclear",".pdf",sep = ""),height=5,width=5)
+  
+  plot(df.sub$cor.ex,df.sub$cor.in,xlab = "exonCPM correlation",ylab = "intronCPM correlation", main = "correlation with nuclear signal")
+  abline(h=0,col = "red",lty = 2)
+  abline(v=0,col = "blue",lty = 2)
+  
+  dev.off()
+  # abline(a = 0,b = 1,col = "green",lty = 2)
+  table((df.sub$cor.in)>(df.sub$cor.ex))
+  table(abs(df.sub$cor.in)>abs(df.sub$cor.ex))
+  table((df.sub$cor.in)>0 & (df.sub$cor.ex)>0)
+  
+  # bisection with mRNA half-life
+  id.L = which(df.sub$mhl<median(df.sub$mhl,na.rm = T))
+  id.H = which(df.sub$mhl>median(df.sub$mhl,na.rm = T))
+  pdf(paste(result_dir,"indiv_boxplot",".pdf",sep = ""),height=5,width=5)
+  
+  boxplot(list(a = df.sub$cor.in[id.L], b = df.sub$cor.ex[id.L], c = df.sub$cor.in[id.H], d = df.sub$cor.ex[id.H]),
+          names = c("L.in","L.ex","H.in","H.ex"),col = c("red","blue","red","blue"),main = "Effect of mRNA half-life",
+          ylab = "correlation")
+  
+  dev.off()
+  p1 = wilcox.test(df.sub$cor.in[id.L],df.sub$cor.ex[id.L],alternative = "greater")$p.value
+  p2 = wilcox.test(df.sub$cor.in[id.H],df.sub$cor.ex[id.H],alternative = "greater")$p.value
+
+  # pair-wise test
+  id = which(df.sub$cor.in>0&df.sub$cor.ex>0&df.sub$mhl>0)
+  df.sub2 = df.sub[id,]
+  
+  id.L = which(df.sub2$mhl<median(df.sub2$mhl,na.rm = T))
+  id.H = which(df.sub2$mhl>median(df.sub2$mhl,na.rm = T))
+  boxplot(list(a = df.sub2$cor.in[id.L]/df.sub2$cor.ex[id.L], b = df.sub2$cor.in[id.H]/df.sub2$cor.ex[id.H]),
+          names = c("L","H"),main = "Effect of mRNA half-life",ylab = "correlation ratio: intron/exon")
+  p1 = wilcox.test(df.sub2$cor.in[id.L]/df.sub2$cor.ex[id.L],
+                   df.sub2$cor.in[id.H]/df.sub2$cor.ex[id.H],alternative = "less")$p.value
+  p2 = t.test(df.sub2$cor.in[id.L]/df.sub2$cor.ex[id.L],
+                   df.sub2$cor.in[id.H]/df.sub2$cor.ex[id.H],alternative = "less")$p.value
+  
+  
+  
+  # divide into 3 parts
+  id.L = which(df.sub$mhl<quantile(df.sub$mhl,1/3,na.rm = T))
+  id.M = which(df.sub$mhl<quantile(df.sub$mhl,2/3,na.rm = T)&df.sub$mhl>quantile(df.sub$mhl,1/3,na.rm = T))
+  id.H = which(df.sub$mhl>quantile(df.sub$mhl,2/3,na.rm = T))
+  boxplot(list(a = df.sub$cor.in[id.L], b = df.sub$cor.ex[id.L], c = df.sub$cor.in[id.M], d = df.sub$cor.ex[id.M],
+               e = df.sub$cor.in[id.H], f = df.sub$cor.ex[id.H]),
+          names = c("L.in","L.ex","M.in","M.ex","H.in","H.ex"),
+          col = c("red","blue","red","blue","red","blue"),main = "Effect of mRNA half-life",
+          ylab = "correlation")
+  
+  p1 = wilcox.test(df.sub$cor.in[id.L],df.sub$cor.ex[id.L],alternative = "greater")$p.value
+  p2 = wilcox.test(df.sub$cor.in[id.H],df.sub$cor.ex[id.H],alternative = "greater")$p.value
+  
+  # calculate correlation between mRNA half-life and intron/exon performance
+  plot(df.sub$mhl,df.sub$cor.in/df.sub$cor.ex)
+  # select only positive correlation
+  id = which(df.sub$cor.in>0&df.sub$cor.ex>0&df.sub$mhl>0)
+  df.sub2 = df.sub[id,]
+  pdf(paste(result_dir,"indiv_mhl_cor",".pdf",sep = ""),height=5,width=5)
+  
+  plot(df.sub2$mhl,df.sub2$cor.in/df.sub2$cor.ex,xlab = "mRNA half-life (min)", ylab = "cor.in/cor.ex",log ="x",
+       main = "Effect of mRNA half-life")
+  
+  dev.off()
+  cor(df.sub2$mhl,df.sub2$cor.in/df.sub2$cor.ex)
+  
+  cor.test(df.sub2$mhl,df.sub2$cor.in/df.sub2$cor.ex)
+  gene1 = rownames(df.sub)[which(df.sub$cor.in==max(df.sub$cor.in))]
+  gene2 = rownames(df.sub)[which(df.sub$cor.ex==max(df.sub$cor.ex))]
+  gene3 = rownames(df.sub)[which(df.sub$cor.in==min(df.sub$cor.in))]
+  
+  # low mRNA half-life gene and high mRNA half-life gene
+  gene4 = rownames(df.sub[order(df.sub$mhl,decreasing = F),])[1]
+  gene5 = rownames(df.sub[order(df.sub$mhl,decreasing = T),])[1]
+  
+  
+  # visualize one gene
+  gene_i = gene5
+  if(T){
+    # calculate mean and sd
+    df.all.plot = NULL
+    for(i in 1:4){
+      time_set = c(0,75,150,300)
+      time = time_set[i]
+      id = which(time_data==time)
+      tmp = c(mean(intronCPM_mat[gene_i,id]),mean(exonCPM_mat[gene_i,id]),
+              sd(intronCPM_mat[gene_i,id]),sd(exonCPM_mat[gene_i,id]))
+      df.all.plot = rbind(df.all.plot,tmp)
+    }
+    colnames(df.all.plot) = c("intron.m","exon.m","intron.sd","exon.sd")
+    df.all.plot = as.data.frame(df.all.plot)
+    df.all.plot$time = time_set
+    
+    p1 = ggplot(df.rela.plot.sub,aes(x = time, y = mean)) + geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),width = 0.2,
+                                                                          position = position_dodge(0.1),colour = "purple")
+    p1 = p1 + geom_line(position = position_dodge(0.1),colour = "purple") + 
+      labs(y = "Nuclear Signal",x = NULL,title = df.sub[gene_i,]$symbol)
+    
+    
+    p2 = ggplot(df.all.plot,aes(x = time, y = intron.m)) + geom_errorbar(aes(ymin = intron.m - intron.sd, ymax = intron.m + intron.sd),
+                                                                         width = 0.2, position = position_dodge(0.1),colour = "red")
+    p2 = p2 + geom_line(position = position_dodge(0.1),colour = "red")+labs(y = "IntronCPM",x = NULL)
+    p3 = ggplot(df.all.plot,aes(x = time, y = exon.m)) + geom_errorbar(aes(ymin = exon.m - exon.sd, ymax = exon.m + exon.sd),
+                                                                       width = 0.2, position = position_dodge(0.1),colour = "blue")
+    p3 = p3 + geom_line(position = position_dodge(0.1),colour = "blue")+labs(y = "ExonCPM",x = NULL)
+    plot_grid(p1,p2,p3,ncol = 1,align = "v")
+    
+  }
+  # visulize individual cells
+  time = 75
+  id = which(time_data==time)
+  mat = intronCPM_mat[,id]
+  # select gens with highest intron expression
+  mat.m = sort(apply(mat,1,mean),decreasing =T) 
+  sel_genes = names(mat.m)[1:9]
+  
+  # Rela activity data
+  if(T){
+    time_point_vector=c(75,150,300)
+    max_movie_time_point_vector=time_point_vector/5+1
+    i_time_point = 1
+    time_point=time_point_vector[i_time_point]
+    max_movie_time_point=max_movie_time_point_vector[i_time_point]
+    RAW_subset=subset(RAW_seurat, subset = Time.point == time_point)
+    RAW_subset=subset(RAW_subset, subset = nCount_RNA < 9e6 ) ##according to ???###
+    
+    out_file_data_subset=out_file_data[which(names(out_file_data) %in% colnames(RAW_subset))]
+    RAW_subset=RAW_subset[,intersect(colnames(RAW_subset),names(out_file_data_subset))]
+    
+    tmp = RAW_subset@meta.data
+    data.dynamics = tmp[,-c(1:5,ncol(tmp))]
+    time_point
+    par(mfrow = c(3,3))
+    for(i in 1:9){
+      timepoints = seq(0,time_point+5,5)
+      plot(timepoints,data.dynamics[i,1:length(timepoints)],xlab = "time (min)",ylab = "Rela activity")
+    }
+    
+    # number of cells for each time point
+    apply(TF.dyn,2,function(x){return(length(na.omit(x)))})
+    
+    # correlation between rela activity and TFA
+    data.dynamics = data.dynamics[order(rownames(data.dynamics)),]
+    ids = match(rownames(data.dynamics),rownames(df.all))
+    TFA.sub = df.all[ids,]
+    
+    final_activity = data.dynamics[max_movie_time_point+1]
+    TFA.eval = cbind(TFA.sub[,1:2],final_activity)
+    colnames(TFA.eval)[3] = "TFA.gt"
+    cor(TFA.eval)
+    
+    par(mfrow = c(1,1))
+    plot(as.vector(as.matrix(final_activity)),TFA.sub$TFA.in,xlab = "Rela activity",ylab = "TFA",col=  "red",ylim = c(0,10))
+    points(as.vector(as.matrix(final_activity)),TFA.sub$TFA.ex,col=  "blue")
+    cor(as.vector(as.matrix(final_activity)),TFA.sub$TFA.in)
+    cor(as.vector(as.matrix(final_activity)),TFA.sub$TFA.ex)
+    
+  }
+  
+  # calculate TFA for high half-life and low half-life genes
+  if(T){
+    time = 75
+    id = which(time_data==time)
+    mat = intronCPM_mat[,id]
+    
+    id.tmp = which(!is.na(df.comb$mhl))
+    df.tmp = df.comb[id.tmp,]
+    genes.H = rownames(df.tmp)[which(df.tmp$mhl>median(df.tmp$mhl))]
+    genes.L = rownames(df.tmp)[which(df.tmp$mhl<median(df.tmp$mhl))]
+    TFA_in.H = log2(apply(intronCPM_mat[genes.H,id],2,mean)+1)
+    TFA_ex.H = log2(apply(exonCPM_mat[genes.H,id],2,mean)+1)
+    TFA_in.L = log2(apply(intronCPM_mat[genes.L,id],2,mean)+1)
+    TFA_ex.L = log2(apply(exonCPM_mat[genes.L,id],2,mean)+1)
+    
+    pdf(paste(result_dir,"TFA dynamics and correlation",".pdf",sep = ""),height=5,width=5)
+    
+    plot(as.vector(as.matrix(final_activity)),TFA_in.H,xlab = "Rela activity",ylab = "TFA",col=  "red",ylim = c(0,10),
+         main = "High mRNA half-life")
+    points(as.vector(as.matrix(final_activity)),TFA_ex.H,col=  "blue")
+    
+    plot(as.vector(as.matrix(final_activity)),TFA_in.L,xlab = "Rela activity",ylab = "TFA",col=  "red",ylim = c(0,10),
+         main = "Low mRNA half-life")
+    points(as.vector(as.matrix(final_activity)),TFA_ex.L,col=  "blue")
+    
+    cors = c(cor(as.vector(as.matrix(final_activity)),TFA_in.H),cor(as.vector(as.matrix(final_activity)),TFA_ex.H),
+             cor(as.vector(as.matrix(final_activity)),TFA_in.L),cor(as.vector(as.matrix(final_activity)),TFA_ex.L))
+    names(cors) = c("H","H","L","L")
+    cols = c("red","blue","red","blue")
+    barplot(cors,col = cols,main = "correlation with Rela signal")
+    
+    dev.off()
+  }
+  
+  # show scatter plot of gene dynamics with TF dynamics
+  pdf(paste(result_dir,"sc_dynamics",".pdf",sep = ""),height=5,width=5)
+  
+  par(mfrow = c(1,1))
+  df.cor = NULL
+  for(i in 1:length(sel_genes)){
+    gene = sel_genes[i]
+    ids = match(rownames(data.dynamics),colnames(intronCPM_mat))
+    vec.in = intronCPM_mat[gene,ids]
+    vec.ex = exonCPM_mat[gene,ids]
+    
+    # symbol names
+    sym_name = geneIDs$SYMBOL[match(gene,geneIDs$GENEID)]
+    
+    plot(as.vector(as.matrix(final_activity)),vec.in,xlab = "Rela activity",ylab = "CPM",col=  "red",main = sym_name,
+         ylim= range(c(vec.in,vec.ex)))
+    points(as.vector(as.matrix(final_activity)),vec.ex,col=  "blue")
+    cor1 = cor.test(as.vector(as.matrix(final_activity)),vec.in)
+    cor2 = cor.test(as.vector(as.matrix(final_activity)),vec.ex)
+    
+    df.cor = rbind(df.cor,c(cor1$estimate,cor1$p.value,cor2$estimate,cor2$p.value))
+  }
+  colnames(df.cor) = c("cor.in","pvalue.in","cor.ex","pvalue.ex")
+  rownames(df.cor) = geneIDs$SYMBOL[match(sel_genes,geneIDs$GENEID)]
+  df.cor = data.frame(df.cor)
+  dev.off()
+}
