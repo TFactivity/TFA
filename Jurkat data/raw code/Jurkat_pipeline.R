@@ -90,12 +90,15 @@ write.csv(TFA_all_combined,paste(result_dir,"TFA_all_combined",".csv"))
 data_totalCPM=data_all_combined_GRN[,grep("totalCPM",colnames(data_all_combined_GRN),value = T)]
 data_totalCPM=data_totalCPM[,!grepl("J15-2",colnames(data_totalCPM))]
 data_totalCPM=data_totalCPM[rowSums(data_totalCPM)>0,]
+TFA_totalCPM=scTFA_calculation(as.matrix(data_totalCPM),human_dorothea_logic_matrix,zscore=F,
+                               gene_weight_method=NULL)
+TFA_all_combined = cbind(TFA_IntronCPM,TFA_ExonCPM[rownames(TFA_IntronCPM),],TFA_totalCPM[rownames(TFA_IntronCPM),])
 
 TFA_all_combined=TFA_all_combined[which(apply(data_totalCPM[rownames(TFA_all_combined),],1,min)>0),]
 
 #average replicates
 condition_vector=paste("J",c(0,3,6,9,12,15,30,45,60),"-",sep="")
-method_vector=c("ExonCPM","IntronCPM")
+method_vector=c("ExonCPM","IntronCPM","totalCPM")
 index=0
 for(condition_i in condition_vector){
   for(method_i in method_vector){
@@ -119,13 +122,19 @@ for(condition_i in condition_vector){
 write.csv(TFA_summary_combined,paste(result_dir,"TFA_summary_combined",".csv"))
 
 #calculate correlation between TFAs and perform GO analysis for TF modules
-method_selected_vector=c("IntronCPM","ExonCPM")
-last_TF_in_first_module_vector=c("SMAD4","NFKB2")
+method_selected_vector=c("IntronCPM","ExonCPM","totalCPM")
+last_TF_in_first_module_vector=c("SMAD4","NFKB2","MYC")
+last_TF_in_first_module_vector=c("SMAD4","TFAP2A","MYC")
+last_TF_in_first_module_vector=c("SMAD3", "RUNX1", "WT1")
+
+options(warn = -1)
 for(i_method_selected_vector in 1:length(method_selected_vector))
 {
   method_selected=method_selected_vector[i_method_selected_vector]
   
   TFA_summary_combined_method_i=TFA_summary_combined[,paste("average_TFA",condition_vector,method_selected,sep="_")]
+  # remove 60min result
+  #TFA_summary_combined_method_i = TFA_summary_combined_method_i[,1:8]
   
   pdf(file =paste(result_dir,"Pearson corr heatmap of TFA",method_selected,"by time",".pdf"),width = 15,height = 15)
   p1=pheatmap(cor(t(TFA_summary_combined_method_i),method="pearson"),
@@ -142,6 +151,22 @@ for(i_method_selected_vector in 1:length(method_selected_vector))
            main=paste("TFA_summary",method_selected))
   graphics.off()
   
+  write.csv(TFA_summary_combined_method_i[TF_name_in_heatmap,],file= paste(result_dir,"TFA_summary",method_selected,".csv"),
+            quote = F,row.names = T)
+  pdf(file =paste(result_dir,"Two_genes_dynamics",method_selected,".pdf"),width = 8,height = 4)
+  genes = c("IRF9","GATA3")
+  par(mfrow = c(1,2))
+  TFA_summary_combined_method_i[genes,]
+  for(gene in genes){
+    time_points = c(0,3,6,9,12,15,30,45,60)
+    plot(time_points,TFA_summary_combined_method_i[gene,],main = paste(method_selected,gene),type ="b",
+         xlab = "t(min)",ylab = "TFA (CPM)")
+    
+  }
+  graphics.off()
+  
+
+  
   last_TF_in_first_module=last_TF_in_first_module_vector[i_method_selected_vector]
   TF_module_list=list(module1=TF_name_in_heatmap[1:which(TF_name_in_heatmap==last_TF_in_first_module)],
                       module2=TF_name_in_heatmap[(which(TF_name_in_heatmap==last_TF_in_first_module)+1):length(TF_name_in_heatmap)])
@@ -150,17 +175,46 @@ for(i_method_selected_vector in 1:length(method_selected_vector))
   data(motifAnnotations_hgnc)
   human_TF_list = unique(motifAnnotations_hgnc$TF)
   
-  for(i_clust in 1:length(TF_module_list)){
-    TF_clust_i=TF_module_list[[i_clust]]
-    
-    bitr_i=bitr(TF_clust_i, fromType="ALIAS", toType="ENTREZID", OrgDb="org.Hs.eg.db")[,"ENTREZID"]
-    bg_bitr=bitr(human_TF_list, fromType="ALIAS", toType="ENTREZID", OrgDb="org.Hs.eg.db")[,"ENTREZID"]
-    bitr_GO <- enrichGO(
-      gene = bitr_i, keyType = "ENTREZID", OrgDb = org.Hs.eg.db, ont = "BP", pAdjustMethod = "BH",
-      pvalueCutoff = 1, qvalueCutoff  = 1, readable = F,
-      universe=bg_bitr)
-    write.csv(bitr_GO@result,paste(result_dir,"bitr_GO@result cluster",i_clust,method_selected,".csv"))
+  print(paste(method_selected))
+  print(TF_module_list)
+  if(F){
+    for(i_clust in 1:length(TF_module_list)){
+      TF_clust_i=TF_module_list[[i_clust]]
+      
+      # tmp = bitr(TF_clust_i, fromType="ALIAS", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+      
+      # SYMBOL -> ENSEMBLE -> ENTREZID
+      # TFs = rownames(TFA_summary_combined_method_i)
+      # n = length(TFs)
+      # df.tmp = NULL
+      # tmp1 = bitr(TFs, fromType="ALIAS", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+      # 
+      # tmp2 = bitr(TFs, fromType="ALIAS", toType="ENSEMBL", OrgDb="org.Hs.eg.db")
+      # 
+      # tmp3 = bitr(TFs, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")
+      # tmp4 = bitr(TFs, fromType="SYMBOL", toType="ENSEMBL", OrgDb="org.Hs.eg.db")
+      # df.tmp = data.frame(from = c("ALIAS","ALIAS","SYMBOL","SYMBOL"), num_from = c(n,n,n,n),
+      #                     to = c("ENTREZID","ENSEMBL","ENTREZID","ENSEMBL"),
+      #                     num_to= c(nrow(tmp1),nrow(tmp2),nrow(tmp3),nrow(tmp4)))
+      
+      bitr_i=bitr(TF_clust_i, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")[,"ENTREZID"]
+      bg_bitr=bitr(human_TF_list, fromType="SYMBOL", toType="ENTREZID", OrgDb="org.Hs.eg.db")[,"ENTREZID"]
+      bitr_GO <- enrichGO(
+        gene = bitr_i, keyType = "ENTREZID", OrgDb = org.Hs.eg.db, ont = "BP", pAdjustMethod = "BH",
+        pvalueCutoff = 1, qvalueCutoff  = 1, readable = F,
+        universe=bg_bitr)
+      # bitr_i = TF_clust_i
+      # bg_bitr = human_TF_list
+      # bitr_GO <- enrichGO(
+      #   gene = bitr_i, keyType = "SYMBOL", OrgDb = org.Hs.eg.db, ont = "BP", pAdjustMethod = "BH",
+      #   pvalueCutoff = 1, qvalueCutoff  = 1, readable = F,
+      #   universe=bg_bitr)
+      write.csv(bitr_GO@result,paste(result_dir,"bitr_GO@result cluster",i_clust,method_selected,".csv"))
+      print(paste(method_selected,'module',i_clust))
+      print(bitr_GO@result[1:5,1:6])
+    } 
   }
+  
 }
 
 #retrieve GO list in human cells from GO.db
@@ -246,13 +300,173 @@ print(p1)
 dev.off()
 
 # check T cell activation genes in the diagram 
-plot(cor_GO_matrix_appended$cor_within_GO_mean_exon,cor_GO_matrix_appended$cor_within_GO_mean_intron, xlab = "cor.exonTFA",
-     ylab = "cor.intronTFA",xlim = c(-0.25,1),ylim =  c(-0.25,1))
-abline(a = 0,b = 1,col= "green")
-GOs = c("GO:0045087","GO:0006954","GO:0071356","GO:0034097","GO:0032481","GO:0050728","GO:0019221","GO:0071345")
-GOs = c("GO:0045087","GO:0006954")
-ids = which(cor_GO_matrix_appended$GO %in% GOs)
-cor_GO_matrix_appended$Term[ids]
-points(cor_GO_matrix_appended$cor_within_GO_mean_exon[ids],cor_GO_matrix_appended$cor_within_GO_mean_intron[ids],
-       col = "red",pch = 16)
+if(T){
+  plot(cor_GO_matrix_appended$cor_within_GO_mean_exon,cor_GO_matrix_appended$cor_within_GO_mean_intron, xlab = "cor.exonTFA",
+       ylab = "cor.intronTFA",xlim = c(-0.25,1),ylim =  c(-0.25,1))
+  abline(a = 0,b = 1,col= "green")
+  GOs = c("GO:0045087","GO:0006954","GO:0071356","GO:0034097","GO:0032481","GO:0050728","GO:0019221","GO:0071345")
+  GOs = c("GO:0045087","GO:0006954")
+  ids = which(cor_GO_matrix_appended$GO %in% GOs)
+  cor_GO_matrix_appended$Term[ids]
+  points(cor_GO_matrix_appended$cor_within_GO_mean_exon[ids],cor_GO_matrix_appended$cor_within_GO_mean_intron[ids],
+         col = "red",pch = 16)
+}
 
+
+# show TF expression
+if(T){
+  dim(data_ExonCPM)
+  dim(TFA_IntronCPM)
+  dim(TFA_ExonCPM)
+  over_genes = intersect(rownames(TFA_IntronCPM),rownames(TFA_ExonCPM))
+  TFE = data_ExonCPM[match(rownames(TFA_IntronCPM),rownames(data_ExonCPM)),]
+  TFE = na.omit(TFE)
+  TFs = rownames(TFE)
+  TFE = as.matrix(TFE)
+  
+  TFE.m = apply(TFE,1,mean)
+  table(TFE.m>1)
+  
+  # TFE dynamics
+  time_points = c(0,0,3,3,6,6,9,9,12,12,15,30,30,45,45,60,60)
+  par(mfrow = c(3,3))
+  for(i in 1:9){
+    TF = TFs[i]
+    plot(time_points,TFE[i,],main = TF,xlab = "t (min)", ylab = "TF expression (CPM)")
+    
+  }
+  i = 2
+  # define change of TF
+  range_TFE = apply(TFE, 1, function(x){return(max(x)-min(x))})
+  length(which(range_TFE>1))
+  TFE_sub = TFE[which(range_TFE>1),]
+  FC_TFE = apply(TFE_sub, 1, function(x){return(max(x)/min(x))})
+  sort(FC_TFE,decreasing = T)
+  hist(log2(FC_TFE),breaks = 100)
+  boxplot(log2(FC_TFE))
+  
+  ids = match(names(sort(FC_TFE,decreasing = T)[1:9]),TFs)
+  n = 1
+  ids = match(names(sort(FC_TFE,decreasing = T)[(1:9)+9*n]),TFs)
+  
+  par(mfrow = c(3,3))
+  for(i in ids){
+    TF = TFs[i]
+    plot(time_points,TFE[i,],main = TF,xlab = "t (min)", ylab = "TF expression (CPM)")
+  }
+  
+  # compare expression data in 0 - 15 min with 30-60min
+  df.comp = data.frame()
+  for(i in 1:length(TFs)){
+    TF = TFs[i]
+    TFE1 = TFE[TF,1:11]
+    TFE2 = TFE[TF,12:17]
+    pvalue = wilcox.test(TFE1,TFE2)$p.value
+    FC = median(TFE2)/median(TFE1)
+      
+    df.comp = rbind(df.comp,c(median(TFE1),median(TFE2),pvalue,FC))
+  }
+  colnames(df.comp) = c("median_exp1","median_exp2","pvalue","FC")
+  rownames(df.comp) = TFs
+  plot(log2(df.comp$FC),-log2(df.comp$pvalue),main = "change of TF expression",xlab = "log2(Fold change)",ylab = "-log2(pvalue)")
+  abline(h = -log2(0.05),col = "grey")
+  abline(v = 0,col = "grey")
+  
+  table(df.comp$pvalue<0.05)
+  sort( df.comp$FC[which(df.comp$pvalue<0.05)])  
+  
+  
+  # correlation of TFE with TFA
+  df.cor = data.frame()
+  for(i in 1:length(TFs)){
+    TF = TFs[i]
+    cor.ex = cor(TFE[TF,],TFA_ExonCPM[TF,])
+    cor.in = cor(TFE[TF,],TFA_IntronCPM[TF,])
+    
+    df.cor = rbind(df.cor,c(cor.ex,cor.in))
+  }
+  colnames(df.cor) = c("cor.ex","cor.in")
+  plot(df.cor$cor.ex,df.cor$cor.in)
+}
+
+# show modules of intron+exon results
+if(T){
+  total_genes = union(rownames(data_ExonCPM),rownames(data_IntronCPM))
+  data_totalCPM = matrix(0,nrow = length(total_genes),ncol = ncol(data_ExonCPM))
+  rownames(data_totalCPM) = total_genes
+  colnames(data_totalCPM) = colnames(data_ExonCPM)
+  id1 = match(rownames(data_ExonCPM),total_genes)
+  for(i in 1:length(id1)){
+    for(j in 1:ncol(data_totalCPM)){
+      data_totalCPM[id1[i],j] =  data_totalCPM[id1[i],j]+data_ExonCPM[i,j]
+    }
+  }
+  id2 = match(rownames(data_IntronCPM),total_genes)
+  for(i in 1:length(id1)){
+    for(j in 1:ncol(data_totalCPM)){
+      data_totalCPM[id2[i],j] =  data_totalCPM[id2[i],j]+data_ExonCPM[i,j]
+    }
+  }
+  
+  
+}
+
+# compare with ATAC-seq data
+if(T){
+  # load ATAC_seq data
+  if(T){
+    load(file = "./ATACseq_count.RData")
+    mat = mat_new
+    # normalize
+    for(i in 1:ncol(mat)){
+      mat[,i] = mat[,i]/colSums(mat)[i]*1000000
+    }
+    
+    # calculate activity of each TF
+    #import GRN
+    GRN=read.csv("../../materials/human_GRN_classAB_activation_only/dorothea_human_AB.csv",
+                 row.names = 1,check.names=FALSE)
+    # calculate each TF activity
+    dim(GRN)
+    TFA = NULL
+    for(i in 1:nrow(GRN)){
+      targets = colnames(GRN)[which(GRN[i,]==1)]
+      over_targets = intersect(targets,rownames(mat))
+      mat.sub = mat[over_targets,]
+      if(length(over_targets)==1){
+        TFA = rbind(TFA,mat.sub)
+      }else{
+        TFA = rbind(TFA,apply(mat.sub,2,mean))
+      }
+      print(i/nrow(GRN))
+    }
+    rownames(TFA) = rownames(GRN)
+    TFA_mean = data.frame(NC_m = apply(TFA[,1:2],1,mean),PIC_m = apply(TFA[,3:4],1,mean))
+    
+  }
+  TFA_in = TFA_all_combined[,c(1,2,16,17)]
+  TFA_in = TFA_all_combined[,c(1,2,12,13)]
+  TFA_in.m = data.frame(in_0=apply(TFA_in[,1:2],1,mean),in_60=apply(TFA_in[,3:4],1,mean))
+  
+  
+  TFA_mean = TFA_mean[rownames(TFA_in),]
+  # compare fold change
+  df.comp = data.frame(atac_fold = TFA_mean[,2]/TFA_mean[,1],in_fold = TFA_in.m[,2]/TFA_in.m[,1])
+  pdf(file =paste(result_dir,"compare_with_ATAC-seq",".pdf"),width = 5,height =5)
+  
+  plot(df.comp$atac_fold,df.comp$in_fold,log = "xy",xlab = "ATAC-seq fold change",ylab = "intron fold change")
+  abline(h = 1,col = "grey",lty = 2)
+  abline(v = 1,col = "grey",lty = 2)
+  cor.test(df.comp$atac_fold,df.comp$in_fold)
+  dev.off()
+  
+  up1 = which(df.comp$atac_fold>1)
+  do1 = which(df.comp$atac_fold<1)
+  up2 = which(df.comp$in_fold>1)
+  do2 = which(df.comp$in_fold<1)
+  length(intersect(up1,up2))
+  length(intersect(do1,up2))
+  length(intersect(do1,do2))
+  length(intersect(up1,do2))
+  
+}
