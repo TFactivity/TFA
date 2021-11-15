@@ -217,6 +217,8 @@ if(T){
   phase_plot_data_frame$CycID=factor(phase_plot_data_frame$CycID,levels=phase_plot_data_frame$CycID)
   
 }
+write.csv(phase_plot_data_frame,file = paste(result_dir,"phase_difference",date_analysis,".csv",sep = ""),
+          quote = F, row.names = F)
 
 p1<-ggplot(data=phase_plot_data_frame,mapping=aes(x=CycID,y=Exon_minus_Intron_phase))+
   geom_bar(stat="identity",width=0.5,position='dodge')+
@@ -233,6 +235,12 @@ dev.off()
 TFA_RNA_Intron_subset=TFA_RNA[Intron_Exon_circadian_TF_vector,grep("Intron",colnames(TFA_RNA),value=T)]
 TFA_RNA_Exon_subset=TFA_RNA[Intron_Exon_circadian_TF_vector,grep("Exon",colnames(TFA_RNA),value=T)]
 
+
+if(F){
+  TFA_RNA_Intron_subset=TFA_RNA[,grep("Intron",colnames(TFA_RNA),value=T)]
+  TFA_RNA_Exon_subset=TFA_RNA[,grep("Exon",colnames(TFA_RNA),value=T)]
+}
+
 # scale per TF
 TFA_RNA_Intron_subset_scale=t(apply(TFA_RNA_Intron_subset,1,scale))
 colnames(TFA_RNA_Intron_subset_scale)=colnames(TFA_RNA_Intron_subset)
@@ -246,8 +254,45 @@ write.csv(TFA_all_scale,paste(result_dir,"TFA_all_scale",".csv",sep = ""))
 TFA_all_scale_melt=melt(TFA_all_scale,id.vars = "TF",variable.name = "index",value.name ="scaled_TFA" )
 TFA_all_scale_melt$normalization=factor(sub("_.*$","",TFA_all_scale_melt$index),levels=c("Intron","Exon"))
 TFA_all_scale_melt$time=as.numeric(sub("^.*_","",TFA_all_scale_melt$index))
-TFA_all_scale_melt$TF=factor(TFA_all_scale_melt$TF,levels=phase_plot_data_frame$CycID)
+# TFA_all_scale_melt$TF=factor(TFA_all_scale_melt$TF,levels=phase_plot_data_frame$CycID)
+TFA_all_scale_melt$TF=factor(TFA_all_scale_melt$TF)
+
 write.csv(TFA_all_scale_melt,paste(result_dir,"TFA_all_scale_melt",".csv",sep = ""))
+
+# show dynamics
+if(T){
+  genes = df.summary$Row.names[np]
+  df.summary$Row.names[np]
+  
+  par(mfrow = c(3,3))
+  for(i in 1:length(genes)){
+    genei = genes[i]
+    ids = which(TFA_all_scale_melt[,1]==genei)
+    id = which(TFA_all_scale_melt[,1]==genei&TFA_all_scale_melt[,4]=='Intron')
+    plot(TFA_all_scale_melt[id,5],TFA_all_scale_melt[id,3],type = "b",col = "red",main = genei,
+         ylim = range(TFA_all_scale_melt[ids,3]),xlab = "t (h)",ylab = "scaled TFA")
+    id = which(TFA_all_scale_melt[,1]==genei&TFA_all_scale_melt[,4]=='Exon')
+    points(TFA_all_scale_melt[id,5],TFA_all_scale_melt[id,3],type = "b",col = "blue")
+  }
+  
+  genes = c("Ets2","Gata3","Etv4","Irf9", "Ctcf", "Prdm14")
+  pdf(file =paste(result_dir,"circadian_genes",".pdf",sep = ""),width = 5,height = 5)
+  
+  par(mfrow = c(1,1))
+  for(i in 1:length(genes)){
+    genei = genes[i]
+    ids = which(TFA_all_scale_melt[,1]==genei)
+    id = which(TFA_all_scale_melt[,1]==genei&TFA_all_scale_melt[,4]=='Intron')
+    plot(TFA_all_scale_melt[id,5],TFA_all_scale_melt[id,3],type = "b",col = "red",main = genei,
+         ylim = range(TFA_all_scale_melt[ids,3]),xlab = "t (h)",ylab = "scaled TFA")
+    id = which(TFA_all_scale_melt[,1]==genei&TFA_all_scale_melt[,4]=='Exon')
+    points(TFA_all_scale_melt[id,5],TFA_all_scale_melt[id,3],type = "b",col = "blue")
+  }
+  dev.off()
+
+}
+
+
 
 p_TFA_all_scale_melt<-ggplot(data=TFA_all_scale_melt,mapping=aes(x=time,y=scaled_TFA,colour=normalization))+
   geom_line(size=1)+
@@ -364,6 +409,13 @@ points(-log10(df.summary$meta2d_pvalue_Exon[np]),-log10(df.summary$meta2d_pvalue
 points(-log10(df.summary$meta2d_pvalue_Exon[pp]),-log10(df.summary$meta2d_pvalue_Intron[pp]),col = "purple",pch = 16)
 pie(c(length(nn),length(pn),length(pp),length(np)),col = c("black","blue","purple","red"),
     labels = c(length(nn),length(pn),length(pp),length(np)))
+
+View(df.summary[pn,])
+GRN = dorothea_logic_matrix
+sapply(np,function(x){return(colnames(GRN)[which(GRN[df.summary[x,1],]==1)])})
+sapply(pp,function(x){return(colnames(GRN)[which(GRN[df.summary[x,1],]==1)])})
+sapply(pn,function(x){return(colnames(GRN)[which(GRN[df.summary[x,1],]==1)])})
+
 dev.off()
 
 circadian_TFs = as.character(df.summary$Row.names[pp])
