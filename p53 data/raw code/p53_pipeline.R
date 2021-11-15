@@ -86,6 +86,8 @@ IntronLength_vector=apply(data_all_combined_GRN_subset[,grep("IntronLength",coln
 
 data_IntronCPM=data_all_combined_GRN_subset[IntronLength_vector>0,grep("IntronCPM",colnames(data_all_combined_GRN_subset),value = T)]
 data_IntronCPM=data_IntronCPM[,-(grep("t=24 h",colnames(data_IntronCPM)))] #remove 24h data
+
+
 TFA_IntronCPM=scTFA_calculation(as.matrix(data_IntronCPM),human_dorothea_logic_matrix,zscore=F,
                                                    gene_weight_method=NULL)
 data_ExonCPM=data_all_combined_GRN_subset[,grep("ExonCPM",colnames(data_all_combined_GRN_subset),value = T)]
@@ -147,6 +149,8 @@ P53_chip_data=as.data.frame(read_xlsx("../raw data/41594_2017_BFnsmb3452_MOESM4_
 P53_chip_data_subset_2kb=P53_chip_data[abs(P53_chip_data$DisttoTSS)<=2000,]
 P53_target=colnames(human_dorothea_logic_matrix)[human_dorothea_logic_matrix["TP53",]==1]
 P53_target_in_chip=intersect(P53_target,P53_chip_data_subset_2kb$ClosestGene)
+# chip binding closest genes
+ChIP_genes = unique(P53_chip_data_subset_2kb$ClosestGene)
 
 P53_chip_data_subset_2kb_target_gene=P53_chip_data_subset_2kb[P53_chip_data_subset_2kb$ClosestGene %in% P53_target_in_chip,]
 
@@ -248,6 +252,7 @@ graphics.off()
 # capture.output(sessionInfo(),file=paste("sessionInfo",date_analysis,".txt"))
 
 # compare TFA with TF expression
+
 # expression of p53
 TF_exp_rep1 = data_ExonCPM["TP53",grep("rep1",colnames(data_ExonCPM))]
 TF_exp_rep2 = data_ExonCPM["TP53",grep("rep2",colnames(data_ExonCPM))]
@@ -368,8 +373,142 @@ library(ggplot2)
 p = ggplot() + geom_bar(data = df.plot, aes(x = sample,y = cor,  fill = data.type),stat = "identity",
                         position = "dodge")+ scale_fill_manual(values=c("red","blue","black"))
 
-p = p + ylim(0,1) + labs(x = NULL,y = "correlation",title = "Correlation with ChIP data")
+p = p + ylim(-1,1) + labs(x = NULL,y = "correlation",title = "Correlation with ChIP data")
 p + theme(plot.title = element_text(size = 20))
 dev.off()
+
+write.csv(df.plot,file = paste(result_dir,"Correlation with ChIP",".csv",sep = ""),quote = F,row.names = F)
+
+# show total TFA results
+TFA_to_mean = (TFA_ex_rep1_LI + TFA_ex_rep2_LI+TFA_in_rep1_LI + TFA_in_rep2_LI)/2
+TFA_to_mean = TFA_to_mean/TFA_to_mean[1]
+pdf(paste(result_dir,"P53 TFA dynamics",".pdf",sep = ""),height=9,width=9)
+plot(t_final,TFA_in_mean,col = "red",type = "b",log = "y",ylim = c(0.8,5),main = "P53 Dynamics"
+     ,xlab = "Time (h)",ylab = "Fold Change")
+points(t_final,TFA_ex_mean,col = "blue",type = "b")
+points(t_final,chip_LI,col = "purple",type = "b")
+points(t_final,TFA_to_mean,col = "green",type = "b")
+
+# calculate TFA with different set of genes
+if(T){
+  GRN=read.csv("../../materials/human_GRN_classAB_activation_only/dorothea_human_AB.csv",
+               row.names = 1,check.names=FALSE)
+  
+  TF_targets = colnames(GRN)[which(GRN['TP53',]==1)]
+  # evaluate the effect of mRNA half-life
+  #import MCF7 half lives data
+  MCF7_half_life_data=read.table("../../simulation data/raw code/p53 target half-lives/GSE49831_MCF7_halflives.txt",header=T)
+  MCF7_half_life_data$MCF7_half_life_mean=apply(MCF7_half_life_data,1,mean)
+  over_targets =intersect(TF_targets,rownames(MCF7_half_life_data))
+  mhl_sub = MCF7_half_life_data[over_targets,]$MCF7_half_life_mean
+  names(mhl_sub) = over_targets
+  mhl_sub = sort(mhl_sub)
+  plot(1:length(mhl_sub),mhl_sub,xlab = "id",ylab = "mRNA half-life (min)",log = 'y')
+  gene.L = names(mhl_sub)[which(mhl_sub<median(mhl_sub))]
+  gene.H = names(mhl_sub)[which(mhl_sub>median(mhl_sub))]
+  
+  GRN.L = GRN.H = GRN
+  vec = rep(0,ncol(GRN))
+  id = match(gene.L,colnames(GRN))
+  vec[id] = 1
+  GRN.L['TP53',] = vec
+  vec = rep(0,ncol(GRN))
+  id = match(gene.H,colnames(GRN))
+  vec[id] = 1
+  GRN.H['TP53',] = vec
+  
+  TFA_in.L=scTFA_calculation(as.matrix(data_IntronCPM),GRN.L,zscore=F,gene_weight_method=NULL)
+  TFA_ex.L=scTFA_calculation(as.matrix(data_ExonCPM),GRN.L,zscore=F,gene_weight_method=NULL)
+  TFA_in.H=scTFA_calculation(as.matrix(data_IntronCPM),GRN.H,zscore=F,gene_weight_method=NULL)
+  TFA_ex.H=scTFA_calculation(as.matrix(data_ExonCPM),GRN.H,zscore=F,gene_weight_method=NULL)
+  
+  
+  
+  # plot IntronTFA and ExonTFA in two replicates
+  Process_data = function(TFA_in,TFA_ex){
+    TFA_in_rep1 = TFA_in["TP53",grep("rep1",colnames(TFA_in))]
+    TFA_in_rep2 = TFA_in["TP53",grep("rep2",colnames(TFA_in))]
+    TFA_in_rep1_FC = TFA_in_rep1/as.numeric(TFA_in_rep1[1])
+    TFA_in_rep2_FC = TFA_in_rep2/as.numeric(TFA_in_rep2[1])
+    
+    TFA_ex_rep1 = TFA_ex["TP53",grep("rep1",colnames(TFA_ex))]
+    TFA_ex_rep2 = TFA_ex["TP53",grep("rep2",colnames(TFA_ex))]
+    TFA_ex_rep1_FC = TFA_ex_rep1/as.numeric(TFA_ex_rep1[1])
+    TFA_ex_rep2_FC = TFA_ex_rep2/as.numeric(TFA_ex_rep2[1])
+    
+    t_chip = c(0,1,2.5,4,5,7.5)
+    chip_signals = P53_chip_data_summary$chip_data_all_FC
+    
+    t_final = seq(0,7.5,0.5)
+    chip_LI = LinearInterpolation(t_chip,chip_signals,t_final)
+    TFA_in_rep1_LI = LinearInterpolation(0:12,TFA_in_rep1,t_final)
+    TFA_ex_rep1_LI = LinearInterpolation(0:12,TFA_ex_rep1,t_final)
+    TFE_rep1_LI = LinearInterpolation(0:12,TF_exp_rep1,t_final)
+    TFA_in_rep2_LI = LinearInterpolation(0:12,TFA_in_rep2,t_final)
+    TFA_ex_rep2_LI = LinearInterpolation(0:12,TFA_ex_rep2,t_final)
+    TFE_rep2_LI = LinearInterpolation(0:12,TF_exp_rep2,t_final)
+    
+    TFA_in_rep1_LI_FC= TFA_in_rep1_LI/TFA_in_rep1_LI[1]
+    TFA_ex_rep1_LI_FC = TFA_ex_rep1_LI/TFA_ex_rep1_LI[1]
+    TFE_rep1_LI_FC = TFE_rep1_LI/TFE_rep1_LI[1]
+    TFA_in_rep2_LI_FC = TFA_in_rep2_LI/TFA_in_rep2_LI[1]
+    TFA_ex_rep2_LI_FC = TFA_ex_rep2_LI/TFA_ex_rep2_LI[1]
+    TFE_rep2_LI_FC = TFE_rep2_LI/TFE_rep2_LI[1]
+    
+    TFA_in_mean = (TFA_in_rep1_LI + TFA_in_rep2_LI)/2
+    TFA_in_mean = TFA_in_mean/TFA_in_mean[1]
+    TFA_ex_mean = (TFA_ex_rep1_LI + TFA_ex_rep2_LI)/2
+    TFA_ex_mean = TFA_ex_mean/TFA_ex_mean[1]
+    
+    df = data.frame(chip_LI=chip_LI,TFA_in_rep1_LI_FC=TFA_in_rep1_LI_FC,TFA_ex_rep1_LI_FC=TFA_ex_rep1_LI_FC,
+                    TFA_in_rep2_LI_FC=TFA_in_rep2_LI_FC,TFA_ex_rep2_LI_FC=TFA_ex_rep2_LI_FC,
+                    TFA_in_mean=TFA_in_mean,TFA_ex_mean=TFA_ex_mean)
+    return(df)
+  }
+  df1 = Process_data(TFA_in.L,TFA_ex.L)
+  df2 = Process_data(TFA_in.H,TFA_ex.H)
+  
+  pdf(paste(result_dir,"effect_of_mRNA_halflife",".pdf",sep = ""),height=5,width=5)
+  
+  par(mfrow = c(1,1))
+  plot(t_final,df1$TFA_in_rep1_LI_FC,col = "red",type = "b",log = "y",ylim = c(0.8,5),main = "rep1 dynamics (short mRNA half-life)",xlab = "time (h)",ylab = 'Fold change')
+  points(t_final,df1$TFA_ex_rep1_LI_FC,col = "blue",type = "b")
+  points(t_final,df1$chip_LI,col = "purple",type = "b")
+
+  plot(t_final,df1$TFA_in_rep2_LI_FC,col = "red",type = "b",log = "y",ylim = c(0.8,5),main = "rep2 dynamics (short mRNA half-life)",xlab = "time (h)",ylab = 'Fold change')
+  points(t_final,df1$TFA_ex_rep2_LI_FC,col = "blue",type = "b")
+  points(t_final,df1$chip_LI,col = "purple",type = "b")
+  
+  
+  plot(t_final,df2$TFA_in_rep1_LI_FC,col = "red",type = "b",log = "y",ylim = c(0.8,5),main = "rep1 dynamics (long mRNA half-life)",xlab = "time (h)",ylab = 'Fold change')
+  points(t_final,df2$TFA_ex_rep1_LI_FC,col = "blue",type = "b")
+  points(t_final,df2$chip_LI,col = "purple",type = "b")
+  
+  plot(t_final,df2$TFA_in_rep2_LI_FC,col = "red",type = "b",log = "y",ylim = c(0.8,5),main = "rep2 dynamics (long mRNA half-life)",xlab = "time (h)",ylab = 'Fold change')
+  points(t_final,df2$TFA_ex_rep2_LI_FC,col = "blue",type = "b")
+  points(t_final,df2$chip_LI,col = "purple",type = "b")
+
+  cors = c(cor(df1$TFA_in_rep1_LI_FC,df1$chip_LI),cor(df1$TFA_ex_rep1_LI_FC,df1$chip_LI),
+           cor(df1$TFA_in_rep2_LI_FC,df1$chip_LI),cor(df1$TFA_ex_rep2_LI_FC,df1$chip_LI),
+           cor(df2$TFA_in_rep1_LI_FC,df2$chip_LI),cor(df2$TFA_ex_rep1_LI_FC,df2$chip_LI),
+           cor(df2$TFA_in_rep2_LI_FC,df2$chip_LI),cor(df2$TFA_ex_rep2_LI_FC,df2$chip_LI))
+  par(mfrow = c(1,1))
+  all_cols = c("red","blue")
+  col_ids = c(1,2,1,2,1,2,1,2)
+  cols = all_cols[col_ids]
+  
+  names(cors) = c("rep1.L","rep1.L","rep2.L","rep2.L","rep1.H","rep1.H","rep2.H","rep2.H")
+  barplot(cors,main = "correlation with ChIP signal",col = cols)
+  
+  # mean results
+  cors = c(cor(df1$TFA_in_mean,df1$chip_LI),cor(df1$TFA_ex_mean,df1$chip_LI),
+           cor(df2$TFA_in_mean,df1$chip_LI),cor(df2$TFA_ex_mean,df1$chip_LI))
+  all_cols = c("red","blue")
+  col_ids = c(1,2,1,2)
+  cols = all_cols[col_ids]
+  names(cors) = c("L","L","H","H")
+  barplot(cors,main = "correlation with ChIP signal",col = cols)
+  dev.off()
+}
 
 
